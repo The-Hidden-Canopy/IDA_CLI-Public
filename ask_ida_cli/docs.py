@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from importlib.resources import files
 from typing import Any
 
@@ -12,7 +12,7 @@ def _load() -> list[dict[str, Any]]:
     raw = files("ask_ida_cli").joinpath("public_docs.json").read_text(encoding="utf-8")
     value = json.loads(raw)
     if not isinstance(value, list):
-        raise ValueError("public documentation bundle must be a list")
+        raise TypeError("public documentation bundle must be a list")
     return [item for item in value if isinstance(item, dict)]
 
 

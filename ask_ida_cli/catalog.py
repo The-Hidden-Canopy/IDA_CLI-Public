@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import fnmatch
 import hashlib
 import json
@@ -14,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -92,7 +94,7 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
         raise CatalogError("catalog contains private fields", code="catalog_private_field")
     expires_at = str(envelope.get("expires_at") or "")
     try:
-        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        expiry = datetime.fromisoformat(expires_at)
     except ValueError:
         raise CatalogError("catalog expires_at is invalid", code="catalog_expiry") from None
     if expiry.tzinfo is None or expiry <= datetime.now(UTC):
@@ -157,7 +159,7 @@ def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | byt
         if not isinstance(key, Ed25519PublicKey):
             raise TypeError("verification key is not Ed25519")
         key.verify(base64.b64decode(encoded, validate=True), canonical_json(_without_signature(envelope)))
-    except Exception as exc:  # cryptography intentionally normalizes malformed signatures here.
+    except (binascii.Error, InvalidSignature, TypeError, ValueError) as exc:
         raise CatalogError(f"catalog signature verification failed: {exc}", code="catalog_signature") from None
 
 

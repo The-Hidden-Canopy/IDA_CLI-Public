@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from ask_ida_cli.catalog import CatalogError, content_manifest
-from ask_ida_cli.models import download_experimental, download_reviewed, list_local_models
+from ask_ida_cli.models import (
+    download_experimental,
+    download_reviewed,
+    list_local_models,
+)
 
 
 def _catalog(digest: str) -> dict:
@@ -75,4 +79,3 @@ def test_local_listing_is_truthful_for_complete_models(tmp_path: Path) -> None:
     assert rows[0]["directory"] == "model-a"
     assert rows[0]["ready"] is True
     assert rows[0]["artifact_sha256"]
-

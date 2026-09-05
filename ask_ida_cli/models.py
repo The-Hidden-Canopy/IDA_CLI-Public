@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .catalog import CatalogError, catalog_entry, content_manifest
 
@@ -92,9 +93,10 @@ def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Pat
             repo_id=str(source["repo_id"]),
             revision=str(source["revision"]),
             local_dir=str(stage),
+            endpoint="https://huggingface.co",
+            token=False,
             allow_patterns=list(entry.get("allow_patterns") or DOWNLOAD_ALLOW_PATTERNS),
             ignore_patterns=list(entry.get("ignore_patterns") or DOWNLOAD_IGNORE_PATTERNS),
-            local_dir_use_symlinks=False,
         )
         manifest = content_manifest(stage)
         if manifest["sha256"] != entry["artifact_sha256"]:
@@ -103,7 +105,7 @@ def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Pat
         return {"artifact_id": artifact_id, "status": "verified", "manifest": manifest}
     except CatalogError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - upstream downloader errors are normalized at the CLI boundary.
         raise CatalogError(f"reviewed model download failed: {exc}", code="download_failed") from None
     finally:
         if stage.exists():
@@ -125,9 +127,10 @@ def download_experimental(model_id: str, model_root: Path, *, revision: str | No
             repo_id=model_id,
             revision=revision or "main",
             local_dir=str(stage),
+            endpoint="https://huggingface.co",
+            token=False,
             allow_patterns=list(DOWNLOAD_ALLOW_PATTERNS),
             ignore_patterns=list(DOWNLOAD_IGNORE_PATTERNS),
-            local_dir_use_symlinks=False,
         )
         manifest = content_manifest(stage)
         stage.replace(target)
@@ -139,9 +142,8 @@ def download_experimental(model_id: str, model_root: Path, *, revision: str | No
         }
     except CatalogError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - upstream downloader errors are normalized at the CLI boundary.
         raise CatalogError(f"experimental model download failed: {exc}", code="download_failed") from None
     finally:
         if stage.exists():
             shutil.rmtree(stage, ignore_errors=True)
-

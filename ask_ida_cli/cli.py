@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from . import __version__
-from .catalog import CatalogError, catalog_entry, fetch_catalog
+from .catalog import CatalogError, fetch_catalog
 from .config import Settings, load_settings
 from .docs import explain, verify_bundled_docs
 from .errors import CLIError

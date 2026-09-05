@@ -84,6 +84,14 @@ def test_supported_entry_requires_immutable_digest() -> None:
         load_catalog_bytes(payload, public_key_pem=public)
 
 
+def test_expired_catalog_is_rejected_even_with_a_valid_signature() -> None:
+    expired = unsigned_catalog()
+    expired["expires_at"] = "2020-01-01T00:00:00Z"
+    payload, public = signed(expired)
+    with pytest.raises(CatalogError, match="expired"):
+        load_catalog_bytes(payload, public_key_pem=public)
+
+
 def test_safe_file_boundary_rejects_code_and_traversal() -> None:
     assert is_safe_relative_file("config.json")
     assert is_safe_relative_file("weights/model.safetensors")

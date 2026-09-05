@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
-
 DEFAULT_CATALOG_URL = "https://www.the-hidden-canopy.org/api/ask-ida/cli/catalog"
 
 

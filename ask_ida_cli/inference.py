@@ -31,6 +31,5 @@ def ask_local(model_path: Path, prompt: str, *, max_new_tokens: int = 256) -> st
         with torch.no_grad():
             output = model.generate(**inputs, max_new_tokens=max(1, min(max_new_tokens, 2048)))
         return tokenizer.decode(output[0], skip_special_tokens=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - local runtime errors are normalized at the CLI boundary.
         raise CLIError(f"local inference failed: {exc}", code="inference_failed", exit_code=3) from None
-
