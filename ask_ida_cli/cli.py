@@ -24,7 +24,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", help="local CLI root")
     parser.add_argument("--model-root", help="local model root")
     parser.add_argument("--catalog-url", help="Hub catalog URL; network use is explicit per command")
-    parser.add_argument("--catalog-public-key", help="PEM Ed25519 verification key")
     parser.add_argument("--json", action="store_true", help="emit JSON")
     commands = parser.add_subparsers(dest="command", required=True)
     def add_json_flag(child: argparse.ArgumentParser) -> None:
@@ -60,7 +59,6 @@ def _settings(args: argparse.Namespace) -> Settings:
             root=args.root,
             model_root=args.model_root,
             catalog_url=args.catalog_url,
-            catalog_public_key=args.catalog_public_key,
         )
     except (ValueError, OSError) as exc:
         raise CLIError(str(exc), code="config_invalid") from None
@@ -141,7 +139,13 @@ def _run(args: argparse.Namespace) -> int:
             _emit(result, as_json=args.json, human=f"{result.get('status')}: {result.get('artifact_id') or result.get('model_id')}")
             return 0
     if args.command == "ask":
-        result = ask_local(Path(args.model_path).expanduser().resolve(strict=False), " ".join(args.prompt), max_new_tokens=args.max_new_tokens)
+        model_path = Path(args.model_path).expanduser().resolve(strict=False)
+        model_root = settings.model_root.resolve(strict=False)
+        try:
+            model_path.relative_to(model_root)
+        except ValueError:
+            raise CLIError("model path must remain inside the configured public model root", code="model_path") from None
+        result = ask_local(model_path, " ".join(args.prompt), max_new_tokens=args.max_new_tokens)
         _emit({"response": result, "source_state": "local_model"}, as_json=args.json, human=result)
         return 0
     raise CLIError("unsupported command", code="command_invalid")

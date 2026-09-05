@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from ask_ida_cli.catalog import (
+    CATALOG_KEY_ID,
     CatalogError,
     canonical_json,
     content_manifest,
@@ -23,7 +24,7 @@ def catalog_entry(*, status: str = "supported", digest: str | None = "a" * 64) -
         "display_name": "Fixture model",
         "kind": "model",
         "status": status,
-        "source": {"host": "huggingface.co", "repo_id": "org/model", "revision": "0123456789abcdef"},
+        "source": {"host": "huggingface.co", "repo_id": "org/model", "revision": "0" * 40},
     }
     if digest is not None:
         entry["artifact_sha256"] = digest
@@ -45,7 +46,7 @@ def unsigned_catalog(entry: dict | None = None) -> dict:
 def signed(catalog: dict) -> tuple[bytes, str]:
     key = Ed25519PrivateKey.generate()
     payload = canonical_json(catalog)
-    envelope = {**catalog, "signature": {"algorithm": "ed25519", "key_id": "test", "value": base64.b64encode(key.sign(payload)).decode("ascii")}}
+    envelope = {**catalog, "signature": {"algorithm": "ed25519", "key_id": CATALOG_KEY_ID, "value": base64.b64encode(key.sign(payload)).decode("ascii")}}
     public = key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode("ascii")
     return json.dumps(envelope).encode("utf-8"), public
 
@@ -83,6 +84,12 @@ def test_supported_entry_requires_immutable_digest() -> None:
     with pytest.raises(CatalogError, match="artifact_sha256"):
         load_catalog_bytes(payload, public_key_pem=public)
 
+    mutable = catalog_entry()
+    mutable["source"]["revision"] = "main"
+    payload, public = signed(unsigned_catalog(mutable))
+    with pytest.raises(CatalogError, match="immutable commit"):
+        load_catalog_bytes(payload, public_key_pem=public)
+
 
 def test_expired_catalog_is_rejected_even_with_a_valid_signature() -> None:
     expired = unsigned_catalog()
@@ -90,6 +97,27 @@ def test_expired_catalog_is_rejected_even_with_a_valid_signature() -> None:
     payload, public = signed(expired)
     with pytest.raises(CatalogError, match="expired"):
         load_catalog_bytes(payload, public_key_pem=public)
+
+
+def test_future_or_inverted_catalog_timestamps_are_rejected() -> None:
+    future = unsigned_catalog()
+    future["issued_at"] = "2099-01-01T00:00:00Z"
+    payload, public = signed(future)
+    with pytest.raises(CatalogError, match="issued_at"):
+        load_catalog_bytes(payload, public_key_pem=public)
+
+    inverted = unsigned_catalog()
+    inverted["expires_at"] = "2026-09-04T00:00:00Z"
+    payload, public = signed(inverted)
+    with pytest.raises(CatalogError, match="expired"):
+        load_catalog_bytes(payload, public_key_pem=public)
+
+
+def test_catalog_key_override_is_not_taken_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload, _ = signed(unsigned_catalog())
+    monkeypatch.setenv("ASK_IDA_PUBLIC_CATALOG_PUBLIC_KEY", "not-used")
+    with pytest.raises(CatalogError, match="verification key"):
+        load_catalog_bytes(payload)
 
 
 def test_safe_file_boundary_rejects_code_and_traversal() -> None:

@@ -9,7 +9,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .catalog import CatalogError, catalog_entry, content_manifest
+from .catalog import (
+    IMMUTABLE_REVISION_PATTERN,
+    MAX_ARTIFACT_BYTES,
+    MAX_ARTIFACT_FILE_BYTES,
+    MAX_ARTIFACT_FILES,
+    CatalogError,
+    catalog_entry,
+    content_manifest,
+)
 
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 MODEL_DIR_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{1,95}$")
@@ -79,10 +87,17 @@ def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Pat
         raise CatalogError("catalog source host is not enabled", code="catalog_host")
     if source.get("host") != "huggingface.co":
         raise CatalogError("this release has no resolver for the catalog source host", code="catalog_host")
+    if not IMMUTABLE_REVISION_PATTERN.fullmatch(str(source.get("revision") or "")):
+        raise CatalogError("reviewed model requires an immutable commit revision", code="catalog_revision")
     target = _safe_target(model_root, str(entry["artifact_id"]))
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
-        manifest = content_manifest(target)
+        manifest = content_manifest(
+            target,
+            max_file_bytes=int(entry.get("max_file_bytes", MAX_ARTIFACT_FILE_BYTES)),
+            max_bytes=int(entry.get("max_bytes", MAX_ARTIFACT_BYTES)),
+            max_files=int(entry.get("max_files", MAX_ARTIFACT_FILES)),
+        )
         if manifest["sha256"] == entry["artifact_sha256"]:
             return {"artifact_id": artifact_id, "status": "already_verified", "manifest": manifest}
         raise CatalogError("existing model directory does not match the catalog digest", code="artifact_drift")
@@ -98,7 +113,12 @@ def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Pat
             allow_patterns=list(entry.get("allow_patterns") or DOWNLOAD_ALLOW_PATTERNS),
             ignore_patterns=list(entry.get("ignore_patterns") or DOWNLOAD_IGNORE_PATTERNS),
         )
-        manifest = content_manifest(stage)
+        manifest = content_manifest(
+            stage,
+            max_file_bytes=int(entry.get("max_file_bytes", MAX_ARTIFACT_FILE_BYTES)),
+            max_bytes=int(entry.get("max_bytes", MAX_ARTIFACT_BYTES)),
+            max_files=int(entry.get("max_files", MAX_ARTIFACT_FILES)),
+        )
         if manifest["sha256"] != entry["artifact_sha256"]:
             raise CatalogError("downloaded artifact does not match the catalog digest", code="artifact_mismatch")
         stage.replace(target)

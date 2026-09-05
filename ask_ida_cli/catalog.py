@@ -7,11 +7,10 @@ import binascii
 import fnmatch
 import hashlib
 import json
-import os
 import re
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -22,9 +21,14 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from .errors import CLIError
 
 SCHEMA_VERSION = "ask-ida-cli-dependency-catalog.v1"
+CATALOG_KEY_ID = "ida-cli-public-2026"
 MAX_CATALOG_BYTES = 2 * 1024 * 1024
 MAX_CATALOG_ENTRIES = 500
+MAX_ARTIFACT_FILE_BYTES = 64 * 1024**3
+MAX_ARTIFACT_BYTES = 512 * 1024**3
+MAX_ARTIFACT_FILES = 100_000
 SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+IMMUTABLE_REVISION_PATTERN = re.compile(r"^[a-f0-9]{40}$")
 SAFE_HOSTS = frozenset({"huggingface.co", "hf.co"})
 PRIVATE_KEY_NAMES = frozenset(
     {
@@ -93,11 +97,15 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
     if _contains_private(envelope):
         raise CatalogError("catalog contains private fields", code="catalog_private_field")
     expires_at = str(envelope.get("expires_at") or "")
+    now = datetime.now(UTC)
     try:
+        issued = datetime.fromisoformat(str(envelope.get("issued_at") or ""))
         expiry = datetime.fromisoformat(expires_at)
     except ValueError:
-        raise CatalogError("catalog expires_at is invalid", code="catalog_expiry") from None
-    if expiry.tzinfo is None or expiry <= datetime.now(UTC):
+        raise CatalogError("catalog issued_at or expires_at is invalid", code="catalog_expiry") from None
+    if issued.tzinfo is None or expiry.tzinfo is None or issued > now + timedelta(minutes=5):
+        raise CatalogError("catalog issued_at is invalid", code="catalog_expiry")
+    if expiry <= now or expiry <= issued:
         raise CatalogError("catalog is expired", code="catalog_expired")
     docs_bundle = envelope.get("docs_bundle")
     if not isinstance(docs_bundle, dict) or not SHA256_PATTERN.fullmatch(str(docs_bundle.get("sha256") or "")):
@@ -137,8 +145,22 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
             digest = str(entry.get("artifact_sha256") or "")
             if not SHA256_PATTERN.fullmatch(digest):
                 raise CatalogError("supported catalog entries require an artifact_sha256", code="catalog_attestation")
+            if not IMMUTABLE_REVISION_PATTERN.fullmatch(revision):
+                raise CatalogError("supported catalog entries require an immutable commit revision", code="catalog_revision")
         elif status not in {"catalog_only", "deprecated"}:
             raise CatalogError("catalog entry status is invalid", code="catalog_status")
+        for limit_name, maximum in (
+            ("max_file_bytes", MAX_ARTIFACT_FILE_BYTES),
+            ("max_bytes", MAX_ARTIFACT_BYTES),
+            ("max_files", MAX_ARTIFACT_FILES),
+        ):
+            if limit_name in entry:
+                try:
+                    limit = int(entry[limit_name])
+                except (TypeError, ValueError):
+                    raise CatalogError(f"catalog {limit_name} is invalid", code="catalog_limits") from None
+                if limit <= 0 or limit > maximum:
+                    raise CatalogError(f"catalog {limit_name} exceeds release bounds", code="catalog_limits")
 
 
 def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | bytes | None) -> None:
@@ -146,10 +168,12 @@ def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | byt
     signature = envelope.get("signature")
     if not isinstance(signature, dict) or signature.get("algorithm") != "ed25519":
         raise CatalogError("catalog signature is missing or unsupported", code="catalog_signature")
+    if signature.get("key_id") != CATALOG_KEY_ID:
+        raise CatalogError("catalog signature key identity is not pinned to this release", code="catalog_key_id")
     encoded = signature.get("value")
     if not isinstance(encoded, str):
         raise CatalogError("catalog signature value is missing", code="catalog_signature")
-    key_material = public_key_pem or os.environ.get("ASK_IDA_PUBLIC_CATALOG_PUBLIC_KEY")
+    key_material = public_key_pem
     if not key_material:
         raise CatalogError("catalog verification key is not configured", code="catalog_key")
     try:
@@ -206,11 +230,26 @@ def is_safe_relative_file(relative: str) -> bool:
     return any(fnmatch.fnmatch(name, pattern) for pattern in SAFE_FILE_PATTERNS)
 
 
-def content_manifest(root: Path) -> dict[str, Any]:
+def content_manifest(
+    root: Path,
+    *,
+    max_file_bytes: int = MAX_ARTIFACT_FILE_BYTES,
+    max_bytes: int = MAX_ARTIFACT_BYTES,
+    max_files: int = MAX_ARTIFACT_FILES,
+) -> dict[str, Any]:
+    for name, limit, maximum in (
+        ("max_file_bytes", max_file_bytes, MAX_ARTIFACT_FILE_BYTES),
+        ("max_bytes", max_bytes, MAX_ARTIFACT_BYTES),
+        ("max_files", max_files, MAX_ARTIFACT_FILES),
+    ):
+        if not isinstance(limit, int) or limit <= 0 or limit > maximum:
+            raise CatalogError(f"{name} exceeds release bounds", code="artifact_limits")
     resolved_root = root.resolve(strict=True)
     files: list[dict[str, Any]] = []
     total_bytes = 0
     for path in sorted(item for item in resolved_root.rglob("*") if item.is_file()):
+        if len(files) >= max_files:
+            raise CatalogError("artifact contains too many files", code="artifact_limits")
         resolved = path.resolve(strict=True)
         try:
             relative = resolved.relative_to(resolved_root).as_posix()
@@ -218,10 +257,19 @@ def content_manifest(root: Path) -> dict[str, Any]:
             raise CatalogError("artifact contains a path outside its root", code="artifact_path") from exc
         if not is_safe_relative_file(relative):
             raise CatalogError(f"artifact contains a disallowed file: {relative}", code="artifact_file")
-        data = path.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
-        total_bytes += len(data)
-        files.append({"path": relative, "bytes": len(data), "sha256": digest})
+        size = path.stat().st_size
+        if size > max_file_bytes or total_bytes + size > max_bytes:
+            raise CatalogError("artifact exceeds release size limits", code="artifact_limits")
+        digest = hashlib.sha256()
+        actual_size = 0
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                actual_size += len(chunk)
+                digest.update(chunk)
+        if actual_size > max_file_bytes or total_bytes + actual_size > max_bytes:
+            raise CatalogError("artifact exceeds release size limits", code="artifact_limits")
+        total_bytes += actual_size
+        files.append({"path": relative, "bytes": actual_size, "sha256": digest.hexdigest()})
     if not files:
         raise CatalogError("artifact contains no allowed files", code="artifact_empty")
     manifest = {"files": files, "file_count": len(files), "bytes": total_bytes}

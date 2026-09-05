@@ -26,3 +26,14 @@ def test_model_download_requires_explicit_id(capsys) -> None:
     assert main(["model", "download", "--json"]) == 2
     payload = json.loads(capsys.readouterr().err)
     assert payload["code"] == "model_id_required"
+
+
+def test_inference_path_cannot_escape_public_model_root(tmp_path: Path, capsys) -> None:
+    outside = tmp_path / "outside-model"
+    assert main([
+        "--root", str(tmp_path),
+        "--model-root", str(tmp_path / "models"),
+        "ask", str(outside), "hello", "there", "--json",
+    ]) == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["code"] == "model_path"

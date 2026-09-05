@@ -20,7 +20,7 @@ def _catalog(digest: str) -> dict:
             "kind": "model",
             "status": "supported",
             "artifact_sha256": digest,
-            "source": {"host": "huggingface.co", "repo_id": "org/model", "revision": "0123456789abcdef"},
+            "source": {"host": "huggingface.co", "repo_id": "org/model", "revision": "0" * 40},
         }],
     }
 

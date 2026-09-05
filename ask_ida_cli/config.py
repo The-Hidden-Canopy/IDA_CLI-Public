@@ -35,7 +35,6 @@ def load_settings(
     root: str | Path | None = None,
     model_root: str | Path | None = None,
     catalog_url: str | None = None,
-    catalog_public_key: str | None = None,
     timeout_seconds: float | None = None,
 ) -> Settings:
     resolved_root = _resolve(root or os.environ.get("ASK_IDA_PUBLIC_ROOT") or Path.cwd())
@@ -45,10 +44,13 @@ def load_settings(
     timeout = float(timeout_seconds or os.environ.get("ASK_IDA_PUBLIC_TIMEOUT", "10"))
     if timeout <= 0 or timeout > 60:
         raise ValueError("timeout must be between 0 and 60 seconds")
+    public_key = _default_catalog_public_key()
+    if not public_key:
+        raise ValueError("the release-pinned catalog verification key is missing")
     return Settings(
         root=resolved_root,
         model_root=resolved_model_root,
         catalog_url=str(catalog_url or os.environ.get("ASK_IDA_PUBLIC_CATALOG_URL") or DEFAULT_CATALOG_URL),
-        catalog_public_key=catalog_public_key or os.environ.get("ASK_IDA_PUBLIC_CATALOG_PUBLIC_KEY") or _default_catalog_public_key(),
+        catalog_public_key=public_key,
         timeout_seconds=timeout,
     )
