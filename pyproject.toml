@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ida-cli-public"
+version = "0.1.0"
+description = "Public local-first command-line companion for Ask IDA"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "The Hidden Canopy LLC" }]
+dependencies = ["cryptography>=42.0"]
+
+[project.optional-dependencies]
+runtime = [
+  "torch>=2.1",
+  "transformers>=4.40",
+  "accelerate>=0.28",
+  "huggingface_hub>=0.26",
+]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ida = "ask_ida_cli.cli:main"
+ask-ida = "ask_ida_cli.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.setuptools.packages.find]
+include = ["ask_ida_cli*"]
+
+[tool.setuptools.package-data]
+ask_ida_cli = ["public_docs.json", "catalog_public_key.pem"]

@@ -1,0 +1,18 @@
+[
+  {
+    "title": "Local-first operation",
+    "body": "IDA_CLI-Public keeps discovery, status, inference, and public documentation explanations local. Network access occurs only for an explicit catalog refresh or model download.",
+    "source": "public-cli-contract"
+  },
+  {
+    "title": "Reviewed and experimental models",
+    "body": "Reviewed models require an immutable Hub catalog revision and content hash. Experimental public model IDs are opt-in, have no support guarantee, and never enable remote Python code.",
+    "source": "public-cli-contract"
+  },
+  {
+    "title": "Private boundary",
+    "body": "Authority, private prompts, private corpora, training runtimes, workbooks, credentials, and deployment secrets stay outside the public CLI.",
+    "source": "public-cli-contract"
+  }
+]
+
