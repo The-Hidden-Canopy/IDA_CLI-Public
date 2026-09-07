@@ -29,10 +29,20 @@ DOWNLOAD_ALLOW_PATTERNS = (
     "tokenizer*",
     "*.safetensors",
     "*.safetensors.index.json",
+)
+DOWNLOAD_IGNORE_PATTERNS = (
+    "*.py",
+    "*.pyc",
+    "*.pyd",
+    "*.so",
+    "*.dll",
+    "*.h5",
+    "*.msgpack",
+    "*.onnx",
+    "*.gguf",
     "*.bin",
     "*.bin.index.json",
 )
-DOWNLOAD_IGNORE_PATTERNS = ("*.py", "*.pyc", "*.pyd", "*.so", "*.dll", "*.h5", "*.msgpack", "*.onnx", "*.gguf")
 
 
 def _snapshot_download() -> Callable[..., str]:
@@ -110,8 +120,9 @@ def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Pat
             local_dir=str(stage),
             endpoint="https://huggingface.co",
             token=False,
-            allow_patterns=list(entry.get("allow_patterns") or DOWNLOAD_ALLOW_PATTERNS),
-            ignore_patterns=list(entry.get("ignore_patterns") or DOWNLOAD_IGNORE_PATTERNS),
+            # Catalog metadata cannot loosen the release-owned file policy.
+            allow_patterns=list(DOWNLOAD_ALLOW_PATTERNS),
+            ignore_patterns=list(DOWNLOAD_IGNORE_PATTERNS),
         )
         manifest = content_manifest(
             stage,

@@ -4,17 +4,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from importlib.resources import files
 from pathlib import Path
 
-DEFAULT_CATALOG_URL = "https://www.the-hidden-canopy.org/api/ask-ida/cli/catalog"
-
-
-def _default_catalog_public_key() -> str | None:
-    try:
-        return files("ask_ida_cli").joinpath("catalog_public_key.pem").read_text(encoding="ascii")
-    except (FileNotFoundError, OSError):
-        return None
+DEFAULT_CATALOG_URL = "https://hidden-canopy-hub-api.azurewebsites.net/api/ask-ida/cli/catalog"
 
 
 def _resolve(value: str | Path) -> Path:
@@ -26,7 +18,6 @@ class Settings:
     root: Path
     model_root: Path
     catalog_url: str = DEFAULT_CATALOG_URL
-    catalog_public_key: str | None = None
     timeout_seconds: float = 10.0
 
 
@@ -44,13 +35,9 @@ def load_settings(
     timeout = float(timeout_seconds or os.environ.get("ASK_IDA_PUBLIC_TIMEOUT", "10"))
     if timeout <= 0 or timeout > 60:
         raise ValueError("timeout must be between 0 and 60 seconds")
-    public_key = _default_catalog_public_key()
-    if not public_key:
-        raise ValueError("the release-pinned catalog verification key is missing")
     return Settings(
         root=resolved_root,
         model_root=resolved_model_root,
         catalog_url=str(catalog_url or os.environ.get("ASK_IDA_PUBLIC_CATALOG_URL") or DEFAULT_CATALOG_URL),
-        catalog_public_key=public_key,
         timeout_seconds=timeout,
     )

@@ -6,10 +6,19 @@ import pytest
 
 from ask_ida_cli.catalog import CatalogError, content_manifest
 from ask_ida_cli.models import (
+    DOWNLOAD_ALLOW_PATTERNS,
+    DOWNLOAD_IGNORE_PATTERNS,
     download_experimental,
     download_reviewed,
     list_local_models,
 )
+
+
+def test_public_download_policy_excludes_legacy_serialized_weights() -> None:
+    assert "*.bin" not in DOWNLOAD_ALLOW_PATTERNS
+    assert "*.bin.index.json" not in DOWNLOAD_ALLOW_PATTERNS
+    assert "*.bin" in DOWNLOAD_IGNORE_PATTERNS
+    assert "*.bin.index.json" in DOWNLOAD_IGNORE_PATTERNS
 
 
 def _catalog(digest: str) -> dict:
@@ -36,14 +45,22 @@ def test_reviewed_download_verifies_digest_and_commits_atomically(tmp_path: Path
     expected_dir.mkdir()
     _write_fixture(expected_dir)
     digest = content_manifest(expected_dir)["sha256"]
+    seen: dict[str, list[str]] = {}
 
     def fake_download(**kwargs):
+        seen["allow_patterns"] = kwargs["allow_patterns"]
+        seen["ignore_patterns"] = kwargs["ignore_patterns"]
         _write_fixture(Path(kwargs["local_dir"]))
         return kwargs["local_dir"]
 
     monkeypatch.setattr("ask_ida_cli.models._snapshot_download", lambda: fake_download)
-    result = download_reviewed(_catalog(digest), "fixture-model", tmp_path / "models")
+    catalog = _catalog(digest)
+    catalog["models"][0]["allow_patterns"] = ["*.bin"]
+    catalog["models"][0]["ignore_patterns"] = []
+    result = download_reviewed(catalog, "fixture-model", tmp_path / "models")
     assert result["status"] == "verified"
+    assert "*.bin" not in seen["allow_patterns"]
+    assert "*.bin" in seen["ignore_patterns"]
     assert (tmp_path / "models" / "fixture-model" / "config.json").is_file()
 
 

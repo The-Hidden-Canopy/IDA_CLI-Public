@@ -88,7 +88,6 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "catalog":
         catalog = fetch_catalog(
             settings.catalog_url,
-            public_key_pem=settings.catalog_public_key,
             timeout=settings.timeout_seconds,
         )
         try:
@@ -128,7 +127,6 @@ def _run(args: argparse.Namespace) -> int:
             else:
                 catalog = fetch_catalog(
                     settings.catalog_url,
-                    public_key_pem=settings.catalog_public_key,
                     timeout=settings.timeout_seconds,
                 )
                 try:

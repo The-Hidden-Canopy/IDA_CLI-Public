@@ -25,6 +25,7 @@ def ask_local(model_path: Path, prompt: str, *, max_new_tokens: int = 256) -> st
             model_path,
             local_files_only=True,
             trust_remote_code=False,
+            use_safetensors=True,
             torch_dtype="auto",
         )
         inputs = tokenizer(prompt, return_tensors="pt")

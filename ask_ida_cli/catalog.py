@@ -11,8 +11,10 @@ import re
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -21,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from .errors import CLIError
 
 SCHEMA_VERSION = "ask-ida-cli-dependency-catalog.v1"
-CATALOG_KEY_ID = "ida-cli-public-2026"
+CATALOG_KEY_ID = "ida-cli-public-2026-09"
 MAX_CATALOG_BYTES = 2 * 1024 * 1024
 MAX_CATALOG_ENTRIES = 500
 MAX_ARTIFACT_FILE_BYTES = 64 * 1024**3
@@ -29,21 +31,72 @@ MAX_ARTIFACT_BYTES = 512 * 1024**3
 MAX_ARTIFACT_FILES = 100_000
 SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 IMMUTABLE_REVISION_PATTERN = re.compile(r"^[a-f0-9]{40}$")
-SAFE_HOSTS = frozenset({"huggingface.co", "hf.co"})
+SAFE_HOSTS = frozenset({"huggingface.co"})
+CATALOG_KEYS = frozenset(
+    {
+        "schema_version",
+        "catalog_version",
+        "issued_at",
+        "expires_at",
+        "public_hosts",
+        "cli_releases",
+        "docs_bundle",
+        "models",
+        "signature",
+    }
+)
+RELEASE_KEYS = frozenset(
+    {
+        "version",
+        "package_name",
+        "python_requires",
+        "docs_bundle_id",
+        "docs_bundle_sha256",
+        "dependency_mode",
+    }
+)
+DOCS_BUNDLE_KEYS = frozenset({"bundle_id", "sha256", "source", "status"})
+MODEL_KEYS = frozenset(
+    {
+        "artifact_id",
+        "display_name",
+        "kind",
+        "status",
+        "support",
+        "source",
+        "artifact_sha256",
+        "max_file_bytes",
+        "max_bytes",
+        "max_files",
+    }
+)
+SOURCE_KEYS = frozenset({"host", "repo_id", "revision"})
+SIGNATURE_KEYS = frozenset({"algorithm", "key_id", "value"})
 PRIVATE_KEY_NAMES = frozenset(
     {
-        "org_id",
-        "organization_id",
-        "worker_token",
+        "orgid",
+        "organizationid",
+        "workertoken",
         "token",
         "secret",
-        "private_key",
-        "api_key",
-        "local_path",
-        "checkpoint_path",
+        "privatekey",
+        "secretkey",
+        "apikey",
+        "localpath",
+        "checkpointpath",
         "prompt",
-        "raw_log",
-        "raw_logs",
+        "rawlog",
+        "rawlogs",
+        "password",
+        "accesstoken",
+        "credential",
+        "clientsecret",
+        "bearertoken",
+        "authtoken",
+        "authorization",
+        "cookie",
+        "privateruntime",
+        "workersubject",
     }
 )
 SAFE_FILE_PATTERNS = (
@@ -54,10 +107,20 @@ SAFE_FILE_PATTERNS = (
     "tokenizer*",
     "*.safetensors",
     "*.safetensors.index.json",
+)
+DENIED_FILE_PATTERNS = (
+    "*.py",
+    "*.pyc",
+    "*.pyd",
+    "*.so",
+    "*.dll",
+    "*.h5",
+    "*.msgpack",
+    "*.onnx",
+    "*.gguf",
     "*.bin",
     "*.bin.index.json",
 )
-DENIED_FILE_PATTERNS = ("*.py", "*.pyc", "*.pyd", "*.so", "*.dll", "*.h5", "*.msgpack", "*.onnx", "*.gguf")
 
 
 class CatalogError(CLIError):
@@ -67,8 +130,18 @@ class CatalogError(CLIError):
         super().__init__(message, code=code, exit_code=exit_code)
 
 
+class _HTTPSOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject catalog redirects that leave HTTPS transport."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        target = urlsplit(newurl)
+        if target.scheme.casefold() != "https" or not target.netloc:
+            raise CatalogError("catalog redirect must use HTTPS", code="catalog_transport")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def canonical_json(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def _without_signature(envelope: dict[str, Any]) -> dict[str, Any]:
@@ -77,18 +150,37 @@ def _without_signature(envelope: dict[str, Any]) -> dict[str, Any]:
     return unsigned
 
 
+def _bundled_public_key_pem() -> str | None:
+    try:
+        return files("ask_ida_cli").joinpath("catalog_public_key.pem").read_text(encoding="ascii")
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _normalize_key(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(key).casefold())
+
+
 def _contains_private(value: Any) -> bool:
     if isinstance(value, list):
         return any(_contains_private(item) for item in value)
     if not isinstance(value, dict):
         return False
     for key, child in value.items():
-        normalized = str(key).casefold()
-        if normalized in PRIVATE_KEY_NAMES or any(part in normalized for part in ("password", "access_token", "credential")):
+        normalized = _normalize_key(key)
+        if normalized in PRIVATE_KEY_NAMES or any(part in normalized for part in ("password", "accesstoken", "credential")):
             return True
         if _contains_private(child):
             return True
     return False
+
+
+def _assert_exact_keys(value: Any, allowed: frozenset[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise CatalogError(f"{label} must be an object", code="catalog_schema")
+    if any(key not in allowed for key in value):
+        raise CatalogError(f"{label} contains an unknown field", code="catalog_schema")
+    return value
 
 
 def validate_catalog_shape(envelope: dict[str, Any]) -> None:
@@ -96,10 +188,21 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
         raise CatalogError(f"unsupported catalog schema; expected {SCHEMA_VERSION}", code="catalog_schema")
     if _contains_private(envelope):
         raise CatalogError("catalog contains private fields", code="catalog_private_field")
-    expires_at = str(envelope.get("expires_at") or "")
+    _assert_exact_keys(envelope, CATALOG_KEYS, "catalog")
+    if "signature" in envelope:
+        signature = _assert_exact_keys(envelope["signature"], SIGNATURE_KEYS, "catalog signature")
+        if (
+            signature.get("algorithm") != "ed25519"
+            or not isinstance(signature.get("key_id"), str)
+            or not isinstance(signature.get("value"), str)
+        ):
+            raise CatalogError("catalog signature is invalid", code="catalog_signature")
+    if any(not isinstance(envelope.get(key), str) for key in ("catalog_version", "issued_at", "expires_at")):
+        raise CatalogError("catalog metadata is invalid", code="catalog_schema")
+    expires_at = envelope["expires_at"]
     now = datetime.now(UTC)
     try:
-        issued = datetime.fromisoformat(str(envelope.get("issued_at") or ""))
+        issued = datetime.fromisoformat(envelope["issued_at"])
         expiry = datetime.fromisoformat(expires_at)
     except ValueError:
         raise CatalogError("catalog issued_at or expires_at is invalid", code="catalog_expiry") from None
@@ -107,42 +210,61 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
         raise CatalogError("catalog issued_at is invalid", code="catalog_expiry")
     if expiry <= now or expiry <= issued:
         raise CatalogError("catalog is expired", code="catalog_expired")
-    docs_bundle = envelope.get("docs_bundle")
-    if not isinstance(docs_bundle, dict) or not SHA256_PATTERN.fullmatch(str(docs_bundle.get("sha256") or "")):
+    docs_bundle = _assert_exact_keys(envelope.get("docs_bundle"), DOCS_BUNDLE_KEYS, "catalog docs bundle")
+    if any(not isinstance(docs_bundle.get(key), str) for key in DOCS_BUNDLE_KEYS):
+        raise CatalogError("catalog docs_bundle is invalid", code="catalog_docs")
+    if not SHA256_PATTERN.fullmatch(docs_bundle["sha256"]):
         raise CatalogError("catalog docs_bundle attestation is missing", code="catalog_docs")
-    entries = envelope.get("models", [])
+    releases = envelope.get("cli_releases")
+    if not isinstance(releases, list) or not releases:
+        raise CatalogError("catalog releases are invalid", code="catalog_releases")
+    for release_value in releases:
+        release = _assert_exact_keys(release_value, RELEASE_KEYS, "catalog release")
+        if any(not isinstance(release.get(key), str) for key in RELEASE_KEYS):
+            raise CatalogError("catalog release is invalid", code="catalog_releases")
+        if (
+            not SHA256_PATTERN.fullmatch(release["docs_bundle_sha256"])
+            or release["docs_bundle_sha256"] != docs_bundle["sha256"]
+        ):
+            raise CatalogError("catalog release documentation attestation is invalid", code="catalog_releases")
+    entries = envelope.get("models")
     if not isinstance(entries, list) or len(entries) > MAX_CATALOG_ENTRIES:
         raise CatalogError("catalog model entries are invalid or too numerous", code="catalog_entries")
     hosts = envelope.get("public_hosts")
-    if not isinstance(hosts, list) or not hosts or any(not isinstance(host, str) for host in hosts):
-        raise CatalogError("catalog public_hosts is required", code="catalog_hosts")
-    for host in hosts:
-        if host.casefold() not in SAFE_HOSTS:
-            raise CatalogError(f"catalog host is not enabled by this release: {host}", code="catalog_host")
+    if hosts != ["huggingface.co"]:
+        raise CatalogError("catalog public host policy is invalid", code="catalog_hosts")
     seen: set[str] = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise CatalogError("catalog model entry must be an object", code="catalog_entry")
-        artifact_id = str(entry.get("artifact_id") or "")
+    for entry_value in entries:
+        entry = _assert_exact_keys(entry_value, MODEL_KEYS, "catalog model entry")
+        artifact_id = entry.get("artifact_id") if isinstance(entry.get("artifact_id"), str) else ""
         if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{1,95}", artifact_id):
             raise CatalogError("catalog artifact_id is invalid", code="catalog_entry")
         if artifact_id in seen:
             raise CatalogError("catalog artifact_id is duplicated", code="catalog_entry")
         seen.add(artifact_id)
-        if str(entry.get("kind") or "") != "model":
+        if entry.get("kind") != "model":
             raise CatalogError("catalog entry kind is invalid", code="catalog_entry")
-        source = entry.get("source")
-        if not isinstance(source, dict) or source.get("host") not in hosts:
+        if any(
+            key in entry and not isinstance(entry[key], str)
+            for key in ("display_name", "support")
+        ):
+            raise CatalogError("catalog model entry is invalid", code="catalog_entry")
+        source = _assert_exact_keys(entry.get("source"), SOURCE_KEYS, "catalog model source")
+        if any(not isinstance(source.get(key), str) for key in SOURCE_KEYS) or source.get("host") != hosts[0]:
             raise CatalogError("catalog source host is not allowed", code="catalog_source")
-        repo_id = str(source.get("repo_id") or "")
+        repo_id = source["repo_id"]
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo_id):
             raise CatalogError("catalog source repo_id is invalid", code="catalog_source")
-        revision = str(source.get("revision") or "")
+        revision = source["revision"]
         if not revision or len(revision) > 200 or any(char in revision for char in ("/", "\\", "..")):
             raise CatalogError("catalog source revision is invalid", code="catalog_source")
         status = str(entry.get("status") or "")
+        if "artifact_sha256" in entry:
+            artifact_digest = entry["artifact_sha256"]
+            if not isinstance(artifact_digest, str) or not SHA256_PATTERN.fullmatch(artifact_digest):
+                raise CatalogError("catalog artifact_sha256 is invalid", code="catalog_attestation")
         if status == "supported":
-            digest = str(entry.get("artifact_sha256") or "")
+            digest = entry.get("artifact_sha256") if isinstance(entry.get("artifact_sha256"), str) else ""
             if not SHA256_PATTERN.fullmatch(digest):
                 raise CatalogError("supported catalog entries require an artifact_sha256", code="catalog_attestation")
             if not IMMUTABLE_REVISION_PATTERN.fullmatch(revision):
@@ -155,15 +277,14 @@ def validate_catalog_shape(envelope: dict[str, Any]) -> None:
             ("max_files", MAX_ARTIFACT_FILES),
         ):
             if limit_name in entry:
-                try:
-                    limit = int(entry[limit_name])
-                except (TypeError, ValueError):
+                limit = entry[limit_name]
+                if isinstance(limit, bool) or not isinstance(limit, int):
                     raise CatalogError(f"catalog {limit_name} is invalid", code="catalog_limits") from None
                 if limit <= 0 or limit > maximum:
                     raise CatalogError(f"catalog {limit_name} exceeds release bounds", code="catalog_limits")
 
 
-def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | bytes | None) -> None:
+def verify_catalog_signature(envelope: dict[str, Any]) -> None:
     validate_catalog_shape(envelope)
     signature = envelope.get("signature")
     if not isinstance(signature, dict) or signature.get("algorithm") != "ed25519":
@@ -173,7 +294,7 @@ def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | byt
     encoded = signature.get("value")
     if not isinstance(encoded, str):
         raise CatalogError("catalog signature value is missing", code="catalog_signature")
-    key_material = public_key_pem
+    key_material = _bundled_public_key_pem()
     if not key_material:
         raise CatalogError("catalog verification key is not configured", code="catalog_key")
     try:
@@ -187,7 +308,7 @@ def verify_catalog_signature(envelope: dict[str, Any], public_key_pem: str | byt
         raise CatalogError(f"catalog signature verification failed: {exc}", code="catalog_signature") from None
 
 
-def load_catalog_bytes(payload: bytes, *, public_key_pem: str | bytes | None = None) -> dict[str, Any]:
+def load_catalog_bytes(payload: bytes) -> dict[str, Any]:
     if len(payload) > MAX_CATALOG_BYTES:
         raise CatalogError("catalog response is too large", code="catalog_size")
     try:
@@ -196,20 +317,22 @@ def load_catalog_bytes(payload: bytes, *, public_key_pem: str | bytes | None = N
         raise CatalogError(f"catalog is not valid JSON: {exc}", code="catalog_json") from None
     if not isinstance(envelope, dict):
         raise CatalogError("catalog response must be a JSON object", code="catalog_json")
-    verify_catalog_signature(envelope, public_key_pem)
+    verify_catalog_signature(envelope)
     return envelope
 
 
-def fetch_catalog(url: str, *, public_key_pem: str | bytes | None = None, timeout: float = 10.0) -> dict[str, Any]:
-    if not url.startswith("https://"):
+def fetch_catalog(url: str, *, timeout: float = 10.0) -> dict[str, Any]:
+    target = urlsplit(url)
+    if target.scheme.casefold() != "https" or not target.netloc:
         raise CatalogError("catalog URL must use HTTPS", code="catalog_transport")
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "IDA_CLI-Public/0.1"})
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "IDA_CLI-Public/0.2"})
+    opener = urllib.request.build_opener(_HTTPSOnlyRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             payload = response.read(MAX_CATALOG_BYTES + 1)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise CatalogError(f"catalog request failed: {exc}", code="catalog_unavailable") from None
-    return load_catalog_bytes(payload, public_key_pem=public_key_pem)
+    return load_catalog_bytes(payload)
 
 
 def catalog_entry(catalog: dict[str, Any], artifact_id: str) -> dict[str, Any]:

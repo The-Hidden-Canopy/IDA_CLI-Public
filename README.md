@@ -25,6 +25,8 @@ commands. The public explanation mode searches the bundled public
 documentation snapshot and does not call a private service.
 
 Reviewed catalog entries require an immutable revision and content hash.
+Public model downloads and inference accept safetensors weights only; legacy
+serialized weight files are rejected.
 Experimental model IDs are allowed only from the configured public host
 allowlist, initially Hugging Face. They are not supported capability claims;
 support is provided only when the maintainers can reproduce the request.
@@ -37,7 +39,7 @@ python -m pip install -e ".[runtime]"
 ida status
 ```
 
-The release pins an Ed25519 verification key in `ask_ida_cli/catalog_public_key.pem`.
+Release 0.2.1 pins an Ed25519 verification key in `ask_ida_cli/catalog_public_key.pem`.
 The Hub deployment must provide the matching private signing key through its
 secret configuration; the private key is never stored in this repository. A
 missing signing key, unsigned catalog, stale catalog, or unverified artifact
