@@ -8,6 +8,12 @@ anonymous Hub dependency catalog for reviewed metadata, then resolves approved
 model bytes locally from Hugging Face and verifies the resulting artifact.
 Hub does not receive model bytes or local paths.
 
+## Public Hub
+
+- [Ask IDA CLI overview](https://thehiddencanopy.com/ask-ida-cli.html)
+- [IDA_CLI-Public release notes](https://thehiddencanopy.com/updates.html#release-notes)
+- [Support IDA_CLI-Public](https://thehiddencanopy.com/flight-deck.html#support)
+
 ## Commands
 
 ```text
