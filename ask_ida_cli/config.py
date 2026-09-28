@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_CATALOG_URL = "https://hidden-canopy-hub-api.azurewebsites.net/api/ask-ida/cli/catalog"
+DEFAULT_LEADERBOARD_URL = "https://hidden-canopy-hub-api.azurewebsites.net/api/neural-forge/leaderboard"
 
 
 def _resolve(value: str | Path) -> Path:
@@ -18,7 +19,9 @@ class Settings:
     root: Path
     model_root: Path
     catalog_url: str = DEFAULT_CATALOG_URL
+    telemetry_url: str | None = None
     timeout_seconds: float = 10.0
+    leaderboard_url: str = DEFAULT_LEADERBOARD_URL
 
 
 def load_settings(
@@ -26,6 +29,8 @@ def load_settings(
     root: str | Path | None = None,
     model_root: str | Path | None = None,
     catalog_url: str | None = None,
+    leaderboard_url: str | None = None,
+    telemetry_url: str | None = None,
     timeout_seconds: float | None = None,
 ) -> Settings:
     resolved_root = _resolve(root or os.environ.get("ASK_IDA_PUBLIC_ROOT") or Path.cwd())
@@ -39,5 +44,11 @@ def load_settings(
         root=resolved_root,
         model_root=resolved_model_root,
         catalog_url=str(catalog_url or os.environ.get("ASK_IDA_PUBLIC_CATALOG_URL") or DEFAULT_CATALOG_URL),
+        leaderboard_url=str(
+            leaderboard_url
+            or os.environ.get("ASK_IDA_PUBLIC_LEADERBOARD_URL")
+            or DEFAULT_LEADERBOARD_URL
+        ),
+        telemetry_url=telemetry_url or os.environ.get("ASK_IDA_PUBLIC_TELEMETRY_URL") or None,
         timeout_seconds=timeout,
     )

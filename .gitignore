@@ -10,3 +10,4 @@ models/
 .catalog-cache/
 .coverage
 .coverage.*
+/.pytest-basetemp-opt-in

@@ -24,11 +24,31 @@ ida model list
 ida model download <catalog-id>
 ida model download --experimental <org/model>
 ida ask <model-directory-or-id> <prompt>
+ida leaderboard list
+ida telemetry status
+ida telemetry share-kernel <foundry-kernel-telemetry-dir> --url https://example.invalid/telemetry
 ```
 
 The network is used only by the explicit `catalog` and `model download`
-commands. The public explanation mode searches the bundled public
-documentation snapshot and does not call a private service.
+commands, the explicit read-only `leaderboard list` command, and the explicit
+`telemetry share-kernel` command. The leaderboard command performs an
+anonymous HTTPS GET only; it has no submission, publication, bearer-token, or
+background-upload path. The Hub URL can be overridden with `--url`,
+`--leaderboard-url`, or `ASK_IDA_PUBLIC_LEADERBOARD_URL`.
+
+Kernel telemetry collection and sharing are disabled by default. Foundry's opt-in
+`--kernel-telemetry DIR` output uses the V2-style
+`native-kernel-telemetry.v2` receipt with `kernel_ontology.jsonl`,
+`training_metrics.jsonl`, and SHA-256 integrity records. The share command
+rejects paths, prompts, datasets, checkpoints, model weights, credentials, raw
+logs, unknown fields, device-duration claims, and promotion claims. Use
+`--dry-run` to inspect the validated receipt without network access. An
+optional bearer token is used only when the explicit share command includes
+`--send-token` together with an explicit `--url`; it is read from
+`ASK_IDA_PUBLIC_TELEMETRY_TOKEN` and is never printed or persisted by the CLI.
+No Hub receiver is assumed: provide `--url`, `--telemetry-url`, or
+`ASK_IDA_PUBLIC_TELEMETRY_URL` for the explicit POST destination. The CLI does
+not upload in the background or retain a copy of the bundle.
 
 Reviewed catalog entries require an immutable revision and content hash.
 Public model downloads and inference accept safetensors weights only; legacy
