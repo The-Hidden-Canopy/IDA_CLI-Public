@@ -11,6 +11,7 @@ from ask_ida_cli.models import (
     download_experimental,
     download_reviewed,
     list_local_models,
+    resolve_local_model,
 )
 
 
@@ -96,3 +97,13 @@ def test_local_listing_is_truthful_for_complete_models(tmp_path: Path) -> None:
     assert rows[0]["directory"] == "model-a"
     assert rows[0]["ready"] is True
     assert rows[0]["artifact_sha256"]
+
+
+def test_resolve_local_model_accepts_directory_name_and_rejects_missing_model(tmp_path: Path) -> None:
+    model_root = tmp_path / "models"
+    model = model_root / "public-model"
+    model.mkdir(parents=True)
+
+    assert resolve_local_model("public-model", model_root) == model.resolve()
+    with pytest.raises(CatalogError, match="was not found"):
+        resolve_local_model("missing-model", model_root)

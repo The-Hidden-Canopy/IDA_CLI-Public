@@ -12,6 +12,11 @@ The public explanation command searches the bundled public documentation
 snapshot. Workbook generation and private explanatory systems are not part of
 this repository.
 
+The CLI has three explicit public network paths: catalog refresh and model
+download, anonymous read-only leaderboard queries, and an operator-invoked
+kernel-telemetry share. None runs in the background. Local status, model
+listing, inference, and documentation explanation remain offline.
+
 ## Public leaderboard read path
 
 `ida leaderboard list` is an explicit, anonymous HTTPS GET to the Hub's

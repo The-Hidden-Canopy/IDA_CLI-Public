@@ -85,6 +85,25 @@ def list_local_models(root: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def resolve_local_model(model_ref: str, model_root: Path) -> Path:
+    """Resolve a local model directory or directory name without network access."""
+    if not str(model_ref or "").strip():
+        raise CatalogError("model reference is required", code="model_required")
+
+    root = model_root.resolve(strict=False)
+    candidate = Path(model_ref).expanduser()
+    if not candidate.is_absolute() and candidate.parent == Path("."):
+        candidate = root / candidate
+    candidate = candidate.resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise CatalogError("model path must remain inside the configured public model root", code="model_path") from exc
+    if not candidate.is_dir():
+        raise CatalogError("local model directory was not found", code="model_not_found")
+    return candidate
+
+
 def download_reviewed(catalog: dict[str, Any], artifact_id: str, model_root: Path) -> dict[str, Any]:
     entry = catalog_entry(catalog, artifact_id)
     if entry.get("status") != "supported":

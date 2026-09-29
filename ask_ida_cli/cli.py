@@ -16,7 +16,7 @@ from .docs import explain, verify_bundled_docs
 from .errors import CLIError
 from .inference import ask_local
 from .leaderboard import fetch_public_leaderboard
-from .models import download_experimental, download_reviewed, list_local_models
+from .models import download_experimental, download_reviewed, list_local_models, resolve_local_model
 from .telemetry import load_share_bundle, share_kernel_telemetry
 
 
@@ -120,7 +120,7 @@ def _run(args: argparse.Namespace) -> int:
             "model_root": str(settings.model_root),
             "catalog_url": settings.catalog_url,
             "leaderboard_url": settings.leaderboard_url,
-            "network": "explicit_catalog_or_download_only",
+            "network": "explicit_catalog_download_leaderboard_or_telemetry_only",
             "leaderboard_network": "explicit_public_read_only",
             "private_runtime": "not_available_in_public_cli",
             "models": list_local_models(settings.model_root),
@@ -232,12 +232,10 @@ def _run(args: argparse.Namespace) -> int:
             _emit(result, as_json=args.json, human=f"{result.get('status')}: {result.get('artifact_id') or result.get('model_id')}")
             return 0
     if args.command == "ask":
-        model_path = Path(args.model_path).expanduser().resolve(strict=False)
-        model_root = settings.model_root.resolve(strict=False)
         try:
-            model_path.relative_to(model_root)
-        except ValueError:
-            raise CLIError("model path must remain inside the configured public model root", code="model_path") from None
+            model_path = resolve_local_model(args.model_path, settings.model_root)
+        except CatalogError as exc:
+            raise CLIError(exc.message, code=exc.code) from None
         result = ask_local(model_path, " ".join(args.prompt), max_new_tokens=args.max_new_tokens)
         _emit({"response": result, "source_state": "local_model"}, as_json=args.json, human=result)
         return 0

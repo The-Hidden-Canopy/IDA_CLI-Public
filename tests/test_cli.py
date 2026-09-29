@@ -10,7 +10,7 @@ def test_status_is_local_and_does_not_need_catalog(tmp_path: Path, capsys) -> No
     assert main(["--root", str(tmp_path), "status", "--json"]) == 0
     output = capsys.readouterr().out
     payload = json.loads(output)
-    assert payload["network"] == "explicit_catalog_or_download_only"
+    assert payload["network"] == "explicit_catalog_download_leaderboard_or_telemetry_only"
     assert payload["private_runtime"] == "not_available_in_public_cli"
 
 
@@ -37,3 +37,19 @@ def test_inference_path_cannot_escape_public_model_root(tmp_path: Path, capsys) 
     ]) == 2
     payload = json.loads(capsys.readouterr().err)
     assert payload["code"] == "model_path"
+
+
+def test_inference_accepts_a_local_model_directory_name_without_network(tmp_path: Path, monkeypatch, capsys) -> None:
+    model_root = tmp_path / "models"
+    model = model_root / "public-model"
+    model.mkdir(parents=True)
+    (model / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("ask_ida_cli.cli.ask_local", lambda path, prompt, max_new_tokens: f"{path.name}:{prompt}")
+
+    assert main([
+        "--root", str(tmp_path),
+        "--model-root", str(model_root),
+        "ask", "public-model", "hello", "there", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["response"] == "public-model:hello there"

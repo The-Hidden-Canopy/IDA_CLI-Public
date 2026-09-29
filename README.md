@@ -65,6 +65,10 @@ python -m pip install -e ".[runtime]"
 ida status
 ```
 
+`ida ask` accepts either a complete local model directory or the name of a
+complete directory beneath the configured public model root. It never resolves
+an ask target over the network.
+
 Release 0.2.1 pins an Ed25519 verification key in `ask_ida_cli/catalog_public_key.pem`.
 The Hub deployment must provide the matching private signing key through its
 secret configuration; the private key is never stored in this repository. A
