@@ -27,9 +27,13 @@ ida ask <model-directory-or-id> <prompt>
 ida leaderboard list
 ida telemetry status
 ida telemetry share-kernel <foundry-kernel-telemetry-dir> --url https://example.invalid/telemetry
+ida brain connect --runtime-url http://127.0.0.1:8780 --username YOUR_USERNAME --title "My brain" --approve --justification "Share my local brain"
 ```
 
-The network is used only by the explicit `catalog` and `model download`
+The explicit `brain connect` candidate adds Cortex HTTPS and an owner-controlled
+loopback IDA runtime connection. See [its contract and release limits](docs/CORTEX_BRAIN_CONNECT.md).
+It contains no private runtime; clean-machine real-runtime acceptance and release
+review remain open. Other network use is by the explicit `catalog` and `model download`
 commands, the explicit read-only `leaderboard list` command, and the explicit
 `telemetry share-kernel` command. The leaderboard command performs an
 anonymous HTTPS GET only; it has no submission, publication, bearer-token, or

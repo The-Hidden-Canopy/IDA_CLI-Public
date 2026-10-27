@@ -4,6 +4,7 @@ import base64
 import json
 import urllib.request
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -47,8 +48,8 @@ def unsigned_catalog(entry: dict | None = None) -> dict:
     return {
         "schema_version": "ask-ida-cli-dependency-catalog.v1",
         "catalog_version": "test-1",
-        "issued_at": "2026-09-05T00:00:00Z",
-        "expires_at": "2026-10-05T00:00:00Z",
+        "issued_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
         "public_hosts": ["huggingface.co"],
         "cli_releases": [{
             "version": "0.2.0",

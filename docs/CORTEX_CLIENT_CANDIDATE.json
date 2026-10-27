@@ -1,0 +1,30 @@
+{
+  "wheel": "ida_cli_public-0.3.0rc1-py3-none-any.whl",
+  "sha256": "092c6ac1a2a4a47696d7803e7dec9121882adc3a7bfa924114eae3541cb4c093",
+  "version": "0.3.0rc1",
+  "independent_review": "pending",
+  "published": false,
+  "entries": [
+    "ask_ida_cli/__init__.py",
+    "ask_ida_cli/__main__.py",
+    "ask_ida_cli/brain_connect.py",
+    "ask_ida_cli/catalog.py",
+    "ask_ida_cli/catalog_public_key.pem",
+    "ask_ida_cli/cli.py",
+    "ask_ida_cli/config.py",
+    "ask_ida_cli/docs.py",
+    "ask_ida_cli/errors.py",
+    "ask_ida_cli/inference.py",
+    "ask_ida_cli/leaderboard.py",
+    "ask_ida_cli/models.py",
+    "ask_ida_cli/public_docs.json",
+    "ask_ida_cli/telemetry.py",
+    "ida_cli_public-0.3.0rc1.dist-info/licenses/NOTICE.md",
+    "ida_cli_public-0.3.0rc1.dist-info/METADATA",
+    "ida_cli_public-0.3.0rc1.dist-info/WHEEL",
+    "ida_cli_public-0.3.0rc1.dist-info/entry_points.txt",
+    "ida_cli_public-0.3.0rc1.dist-info/top_level.txt",
+    "ida_cli_public-0.3.0rc1.dist-info/RECORD"
+  ],
+  "private_runtime_import_scan": "passed"
+}

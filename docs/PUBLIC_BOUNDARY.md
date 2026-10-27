@@ -12,7 +12,13 @@ The public explanation command searches the bundled public documentation
 snapshot. Workbook generation and private explanatory systems are not part of
 this repository.
 
-The CLI has three explicit public network paths: catalog refresh and model
+The candidate also adds an explicit `brain connect` path, documented in
+[the Cortex transport contract](CORTEX_BRAIN_CONNECT.md). It sends bounded
+prompts/results to Cortex for sharing while weights and execution stay on the
+owner device. This is an intentional exception to offline inference and requires
+explicit approval; it neither imports nor distributes a private runtime.
+
+The pre-existing CLI has three explicit public network paths: catalog refresh and model
 download, anonymous read-only leaderboard queries, and an operator-invoked
 kernel-telemetry share. None runs in the background. Local status, model
 listing, inference, and documentation explanation remain offline.

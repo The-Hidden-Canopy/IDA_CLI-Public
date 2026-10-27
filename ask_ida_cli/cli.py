@@ -88,6 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     telemetry_share.add_argument("--dry-run", action="store_true", help="validate and print the bundle without network access")
     add_json_flag(telemetry_share)
+    brain = commands.add_parser('brain', help='explicitly connect a local IDA runtime to Cortex')
+    brain_commands = brain.add_subparsers(dest='brain_command', required=True)
+    connect = brain_commands.add_parser('connect')
+    connect.add_argument('--runtime-url', required=True, help='owner-controlled http://127.0.0.1:PORT runtime')
+    connect.add_argument('--username', required=True)
+    connect.add_argument('--title', required=True)
+    connect.add_argument('--approve', action='store_true')
+    connect.add_argument('--justification', required=True)
     return parser
 
 
@@ -112,6 +120,22 @@ def _emit(value: Any, *, as_json: bool, human: str | None = None) -> None:
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.command == 'brain':
+        from getpass import getpass
+        from .brain_connect import BrainConnector
+        if not args.approve or not args.justification.strip():
+            raise CLIError('Connection requires --approve and a justification', code='approval_required')
+        client = BrainConnector(args.runtime_url)
+        try:
+            result = client.connect(username=args.username, password=getpass('Cortex password: '),
+                title=args.title, approved=True, justification=args.justification)
+            _emit(result, as_json=args.json, human='Local brain connected; keep this process running. Ctrl+C disconnects.')
+            client.run()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            client.close()
+        return 0
     settings = _settings(args)
     if args.command == "status":
         value = {
